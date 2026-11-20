@@ -25,12 +25,39 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Locate project root
+        shell: bash
+        run: |
+          set -e
+          find_root() {
+            find . -maxdepth 5 -name settings.gradle.kts -not -path '*/build/*' -print -quit 2>/dev/null
+          }
+          S=$(find_root || true)
+          if [ -z "$S" ]; then
+            ZIP=$(find . -maxdepth 2 -name '*.zip' -print -quit 2>/dev/null || true)
+            if [ -n "$ZIP" ]; then
+              echo "未找到工程文件，尝试解压上传的 zip: $ZIP"
+              mkdir -p _extracted
+              unzip -o "$ZIP" -d _extracted
+              S=$(find_root || true)
+            fi
+          fi
+          if [ -z "$S" ]; then
+            echo "::error::仓库里找不到 settings.gradle.kts。请确认已上传源码文件（app 目录、build.gradle.kts、settings.gradle.kts 等），或上传源码 zip。"
+            exit 1
+          fi
+          DIR=$(dirname "$S")
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "工程根目录: $DIR"
+          ls -la "$DIR"
+
       - name: Unit tests and build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ResoBoost-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
